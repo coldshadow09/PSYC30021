@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="author" content="Kimberley Chong">
+    <meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+	<title>PSYC30021 2016 Semester 2 - Psychological Science: Theory & Practice</title>
+    <link href="http://getbootstrap.com/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="http://getbootstrap.com/examples/jumbotron-narrow/jumbotron-narrow.css" rel="stylesheet">
+    
+    <link href="{{url_for('static', filename='bootstrap.css')}}" rel="stylesheet">
+    <script src="{{url_for('static', filename='jquery.min.js')}}" type="text/javascript"></script>
+
+    <style>
+#card{
+    background:#fff;
+    width: 600px;
+    height: 336px;
+    top: 50%;
+    left:50%;
+    -webkit-transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%);
+    position: absolute;
+}
+
+#card .img{
+    position: absolute;
+    top: 50%;
+    left:50%;
+    -webkit-transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%);
+    display: block;
+    z-index: 0;
+}
+
+#instructions {
+    position: absolute;
+    left: 5%;
+    top: 25%;
+    display: block;
+    padding: 10px;
+    z-index: 1;
+}
+
+#startbutton{
+    left:50%;
+    -webkit-transform: translateX(-50%);
+    transform: translateX(-50%);
+    position: relative;
+    display: block;
+}
+
+#controls{
+    left:50%;
+    bottom: 10%;
+    -webkit-transform: translateX(-50%);
+    transform: translateX(-50%);
+    display: inline-block;
+    position: inherit;
+}
+</style>
+
+<script>
+// Filter images only for trial
+function getImages(JSONobj, type) {
+    var imagesList = [];
+    for (var i = 0; i < JSONobj.stimulus.length; i++) {
+        var image = JSONobj.stimulus[i];
+        if (image["exp"] == type) { // If matches type
+            var path = "image/" + JSONobj.stimulus[i]["image"];
+            var url = "{{url_for('static', filename='_')}}".replace(/_/g, path);
+            imagesList.push(url);
+        }
+    };
+    return imagesList; // Return filtered images
+};
+
+// Shuffle the order of stimulus displayed
+function shuffle(array) {
+  var currentIndex = array.length, temporaryValue, randomIndex;
+  // While there are remaining elements to shuffle...
+  while (0 !== currentIndex) {
+    // Pick a remaining element...
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex -= 1;
+    // And swap it with the current element.
+    temporaryValue = array[currentIndex];
+    array[currentIndex] = array[randomIndex];
+    array[randomIndex] = temporaryValue;
+  }
+  return array;
+};
+
+// Global var
+var startTime;
+var randomImages;
+var randomTest;
+// To store
+var elapsedTime;
+var YGreenTop = 0;
+var NGreenTop = 0;
+var YGreenBtm = 0;
+var NGreenBtm = 0;
+var YRedBtm = 0;
+var NRedBtm = 0;
+var YRedTop = 0;
+var NRedTop = 0;
+var YNew = 0;
+var NNew = 0;
+var YSelectedTotal = 0;
+var NSelectedTotal = 0;
+
+// Get all images
+function getJSON() {
+    var data = "{{url_for('static', filename='stimulus.json')}}";
+    var xhr = new XMLHttpRequest();
+    xhr.overrideMimeType("application/json");
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState == 4) {
+        var JSONobj = JSON.parse(xhr.responseText);
+        var trialImages = getImages(JSONobj, "real");
+        randomImages = shuffle(trialImages); // Shuffle stimulus images
+        var trialTest = getImages(JSONobj, "test");
+        randomTest = shuffle(trialTest); // Shuffle trial images
+      }
+    };
+    xhr.open("GET", data, true);
+    xhr.send();
+};
+
+// Save data
+function saveData() {
+    var attendedRed = (YRedTop + YRedBtm) / YSelectedTotal;
+    var attendedGreen = (YGreenTop + YGreenBtm) / YSelectedTotal;
+    var attendedNew = YNew / YSelectedTotal;
+    sessionStorage.setItem("YSelectedTotal", YSelectedTotal);
+    sessionStorage.setItem("YRedTop", YRedTop);
+    sessionStorage.setItem("YRedBtm", YRedBtm);
+    sessionStorage.setItem("YGreenTop", YGreenTop);
+    sessionStorage.setItem("YGreenBtm", YGreenBtm);
+    sessionStorage.setItem("YNew", YNew);
+    sessionStorage.setItem("NSelectedTotal", NSelectedTotal);
+    sessionStorage.setItem("NRedTop", NRedTop);
+    sessionStorage.setItem("NRedBtm", NRedBtm);
+    sessionStorage.setItem("NGreenTop", NGreenTop);
+    sessionStorage.setItem("NGreenBtm", NGreenBtm);
+    sessionStorage.setItem("NNew", NNew);
+    sessionStorage.setItem("AttendedRed", attendedRed);
+    sessionStorage.setItem("AttendedGreen", attendedGreen);
+    sessionStorage.setItem("AttendedNew", attendedNew);
+    sessionStorage.setItem("TimeTaken", elapsedTime);
+    var localdata = new Object(); // JSON dict
+    for (var i = 0; i < sessionStorage.length; ++i) {
+        localdata[sessionStorage.key(i)] = sessionStorage.getItem(sessionStorage.key(i));
+    }
+    $.ajax({
+        url: "{{ url_for('save', _external=True) }}", // Function to send data
+        type: "POST",
+        dataType: "json",
+        contentType: "application/json; charset=UTF-8",
+        accepts: {
+            json: "application/json"
+        },
+        data: JSON.stringify(localdata),
+        complete: function(data) {
+            window.location.replace("/end");
+        }
+    });
+};
+
+// Next image
+var testIndex = 0;
+function nextImage() {
+    // Move to next stimulus in the test
+    if (testIndex < randomTest.length - 1) {
+         testIndex += 1;
+         $("#trials").attr("src", randomTest[testIndex]);
+    }
+    // If reaches the end, go to end page!
+    else {
+        elapsedTime = new Date().getTime() - startTime; // Record elapsedTime
+        saveData(); // Save and post data to server
+    }
+};
+
+function tallySelected(image, value) {
+    var greentop = [1, 3, 5];
+    var greenbtm = [11, 13, 15];
+    var redbtm = [2, 4, 6];
+    var redtop = [12, 14, 16];
+    var _new_ = [21, 22, 23, 24, 25, 26];
+    var num = parseInt(image.split(/(\d+)/)[1]);
+    if (greentop.indexOf(num) > -1) {
+        if (value == 1) {
+            YGreenTop += 1;
+            YSelectedTotal += 1;
+        }
+        else {
+            NGreenTop += 1;
+            NSelectedTotal += 1;
+        }
+    }
+    else if (greenbtm.indexOf(num) > -1) {
+        if (value == 1) {
+            YGreenBtm += 1;
+            YSelectedTotal += 1;
+        }
+        else {
+            NGreenBtm += 1;
+            NSelectedTotal += 1;
+        }
+    }
+    else if (redbtm.indexOf(num) > -1) {
+        if (value == 1) {
+            YRedBtm += 1;
+            YSelectedTotal += 1;
+        }
+        else {
+            NRedBtm += 1;
+            NSelectedTotal += 1;
+        }
+    }
+    else if (redtop.indexOf(num) > -1) {
+        if (value === 1) {
+            YRedTop += 1;
+            YSelectedTotal += 1;
+        }
+        else {
+            NRedTop += 1;
+            NSelectedTotal += 1;
+        }
+    }
+    else if (_new_.indexOf(num) > -1) {
+        if (value === 1) {
+            YNew += 1;
+            YSelectedTotal += 1;
+        }
+        else {
+            NNew += 1;
+            NSelectedTotal += 1;
+        }
+    }
+};
+
+function checkResult(param) {
+    try {
+        // Get StimuliAssigned
+        var assignedStimuli = sessionStorage.getItem("StimuliAssigned");
+        var image = $("#trials").attr("src"); // Current image
+        var value = parseInt(param.value);
+        tallySelected(image, value);
+        nextImage();
+        }
+    catch (err) {
+        alert(err.message);
+        window.location.replace("/");
+    }
+};
+
+function setControls() {
+    $("#instructions").css("display", "none"); // Text disappears
+    // Set buttons
+    $("#controls").html("<button onclick='checkResult(this)' value='1'>YES</button> <button onclick='checkResult(this)' value='0'>NO</button>");
+    $("#trials").attr("src", randomTest[0]); // Set first image
+    // Start timer
+    startTime = new Date().getTime();
+};
+
+function startExp() {
+    $("#controls").css("display", "none"); // Button disappears
+    $("#instructions").css("display", "none"); // Text disappears
+    var dot = "{{url_for('static', filename='image/dot.svg')}}";
+    $("#trials").attr("src", dot); // Display fixation dot
+    setTimeout(dot, 1000);
+    var index = 0;
+    function resetCard() {
+        $("#trials").attr("src", "{{url_for('static', filename='image/blank.svg')}}");
+        $("#instructions").html("Now, please click the <b>YES</b> button if you <u>have seen the figure</u> after clicking the start button (no matter if it was red or green) just now. Click the <b>NO</b> button if you <u>have NOT seen the figure</u>.");
+        $("#controls").html("<button id='startbutton2' class='btn btn-default' onclick='setControls()'>Start</button>");
+        $("#controls").css("display", "block"); // Button appears
+        $("#instructions").css("display", "block"); // Text appears
+    }
+    // Show the stimulus
+    function slide() {
+        if (index < randomImages.length) {
+            $("#trials").attr("src", randomImages[index++%randomImages.length]);
+        }
+    }
+    setInterval(slide, 2000);
+    setTimeout(resetCard, 13000);
+}
+
+</script>
+
+</head>
+
+<body style="background-color:#000;" onload="getJSON()">
+	<div id="card">
+        <img id = "trials" src="{{url_for('static', filename='image/blank.svg')}}" class="img">
+        <div id="instructions">
+            <p>You have passed the practice trial. Again, you will be shown a sequence of diagrams composed of red and green figures. Please fixate on the black dot in the center and pay attention only to the <font color = "#FF0000">red</font> or <font color ="#00ff00">green</font> figure you were previously assigned to.</p>
+            <p>Press the button to start the experiment.</p>
+        </div>
+        <div id="controls">
+            <button id="startbutton" class="btn btn-default" onclick="startExp()">Start Experiment</button>
+        </div>
+    </div>
+
+</body>
+
+
+</html>
